@@ -17,7 +17,14 @@ module ShopifyApp
           },
           auth_query: ShopifyAPI::Auth::Oauth::AuthQuery.new(**filtered_params),
         )
-      rescue
+      rescue => e
+        unless e.class.module_parent == ShopifyAPI::Errors
+          ActiveSupport::Deprecation.warn(<<~EOS)
+            An error of type #{e.class} was rescued. This is not part of `ShopifyAPI::Errors`, which could indicate a
+            bug in your app, or a bug in the shopify_app gem. Future versions of the gem may re-raise this error rather
+            than rescuing it.
+          EOS
+        end
         return respond_with_error
       end
 
@@ -28,7 +35,10 @@ module ShopifyApp
         value: auth_result[:cookie].value,
       }
 
-      session[:shopify_user_id] = auth_result[:session].associated_user.id if auth_result[:session].online?
+      if auth_result[:session].online?
+        session[:shopify_user_id] = auth_result[:session].associated_user.id
+        ShopifyApp::Logger.debug("Saving Shopify user ID to cookie")
+      end
 
       if start_user_token_flow?(auth_result[:session])
         return respond_with_user_token_flow
